@@ -2,6 +2,8 @@ name: Build APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -11,76 +13,62 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Install system deps
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential git zip unzip openjdk-17-jdk \
-            python3-dev python3-pip \
-            autoconf automake libtool pkg-config \
-            zlib1g-dev libncurses5-dev libncursesw5-dev \
-            libffi-dev libssl-dev libsqlite3-dev \
-            libjpeg-dev libpng-dev \
-            cmake ccache
+          sudo apt-get install -y \
+            git zip unzip \
+            build-essential ccache \
+            libffi-dev libssl-dev \
+            zlib1g-dev libbz2-dev liblzma-dev \
+            libsqlite3-dev libjpeg-dev libpng-dev
+
+      - name: Set up Android SDK (sdkmanager)
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | sdkmanager --licenses
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;36.1.0"
 
       - name: Install buildozer + cython
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install "cython<3" buildozer
+          python -m pip install "Cython==0.29.36" "buildozer==1.5.0"
 
-      - name: Ensure/patch buildozer.spec (accept licenses)
+      - name: Ensure buildozer.spec has accept_sdk_license
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          import re, textwrap
+          if ! grep -q "^android.accept_sdk_license" buildozer.spec; then
+            echo "" >> buildozer.spec
+            echo "android.accept_sdk_license = True" >> buildozer.spec
+          fi
+          echo "---- buildozer.spec ----"
+          cat buildozer.spec
 
-          p = Path("buildozer.spec")
-          if not p.exists():
-              content = textwrap.dedent("""\
-              [app]
-              title = PLU App
-              package.name = pluapp
-              package.domain = org.tuniche
-              version = 0.1
-
-              source.dir = .
-              source.include_exts = py,kv,png,jpg,jpeg,csv
-
-              requirements = python3,kivy,pillow,openpyxl
-
-              android.api = 33
-              android.minapi = 24
-              android.archs = arm64-v8a
-              orientation = portrait
-              """)
-              p.write_text(content, encoding="utf-8")
-
-          txt = p.read_text(encoding="utf-8")
-
-          # Si no existe la línea, la agrega. Si existe, la fuerza a True.
-          if re.search(r'^\s*android\.accept_sdk_license\s*=', txt, flags=re.M):
-              txt = re.sub(r'^\s*android\.accept_sdk_license\s*=.*$',
-                           'android.accept_sdk_license = True',
-                           txt, flags=re.M)
-          else:
-              # la agrega al final
-              txt = txt.rstrip() + "\n\nandroid.accept_sdk_license = True\n"
-
-          p.write_text(txt, encoding="utf-8")
-          print("buildozer.spec patched: android.accept_sdk_license = True")
-          PY
-
-      - name: Build APK (debug) - auto accept prompts
+      - name: Build APK (debug)
         run: |
-          yes | buildozer -v android debug
+          buildozer -v android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: PLU_APP-APK
           path: bin/*.apk
+
