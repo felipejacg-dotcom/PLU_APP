@@ -11,25 +11,85 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            python3 python3-pip python3-setuptools python3-wheel python3-venv \
-            git zip unzip \
-            openjdk-17-jdk \
+            zip unzip git \
             build-essential \
+            python3-dev \
+            openjdk-17-jdk \
+            autoconf automake libtool pkg-config \
             libffi-dev libssl-dev \
-            zlib1g-dev libjpeg-dev
+            zlib1g-dev \
+            liblzma-dev \
+            libjpeg-dev \
+            libncurses5-dev libncursesw5-dev \
+            libsqlite3-dev \
+            libreadline-dev \
+            libgdbm-dev \
+            libgdbm-compat-dev \
+            libexpat1-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libegl1-mesa-dev \
+            libx11-dev libxext-dev libxrender-dev \
+            libxrandr-dev libxi-dev \
+            libsndfile1 \
+            libpulse-dev \
+            libasound2-dev
 
-      - name: Install buildozer
+      - name: Install buildozer + cython
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install buildozer cython
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install "cython<3" buildozer
 
+      # Si NO existe buildozer.spec, lo crea.
       - name: Ensure buildozer.spec exists
         run: |
-          test -f buildozer.spec || (echo "Falta buildozer.spec en la raíz del repo" && exit 1)
+          if [ ! -f buildozer.spec ]; then
+            cat > buildozer.spec << 'EOF'
+[app]
+title = PLU App
+package.name = pluapp
+package.domain = org.tuniche
+version = 0.1
+
+source.dir = .
+source.include_exts = py,kv,png,jpg,jpeg,csv
+
+requirements = python3,kivy,pillow,openpyxl
+
+android.api = 33
+android.minapi = 24
+android.archs = arm64-v8a
+orientation = portrait
+EOF
+          fi
+
+      # ✅ PARCHE: agrega android.accept_sdk_license = True si no existe
+      - name: Patch buildozer.spec (auto accept SDK license)
+        run: |
+          if ! grep -qE '^\s*android\.accept_sdk_license\s*=' buildozer.spec; then
+            echo "" >> buildozer.spec
+            echo "android.accept_sdk_license = True" >> buildozer.spec
+          fi
+          echo "----- buildozer.spec -----"
+          cat buildozer.spec
+
+      # Cache para acelerar builds (opcional)
+      - name: Cache buildozer + gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            ~/.gradle
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK (debug)
         run: |
