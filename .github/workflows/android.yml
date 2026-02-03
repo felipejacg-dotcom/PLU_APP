@@ -14,6 +14,13 @@ from kivy.uix.popup import Popup
 
 from openpyxl import Workbook
 
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+
+
 # Opcional: compartir archivo en Android (o en PC con apps compatibles)
 try:
     from plyer import share
