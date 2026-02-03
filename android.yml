@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -18,57 +18,77 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
+          distribution: temurin
           java-version: "17"
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             git zip unzip \
-            build-essential ccache \
+            build-essential \
+            autoconf automake libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo5 cmake \
             libffi-dev libssl-dev \
-            zlib1g-dev libbz2-dev liblzma-dev \
-            libsqlite3-dev libjpeg-dev libpng-dev
+            libltdl-dev \
+            libsqlite3-dev \
+            libjpeg-dev libpng-dev \
+            openjdk-17-jdk \
+            python3-venv \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev
 
-      - name: Set up Android SDK (sdkmanager)
-        uses: android-actions/setup-android@v3
+      # Instalamos Android cmdline-tools (sdkmanager) manualmente
+      - name: Install Android cmdline-tools (sdkmanager)
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          cd "$ANDROID_SDK_ROOT/cmdline-tools"
+          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip
+          mv cmdline-tools latest
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
-      - name: Accept Android SDK licenses
+      - name: Verify sdkmanager
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+        run: |
+          which sdkmanager
+          sdkmanager --version
+
+      - name: Install Android SDK packages + accept licenses
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
         run: |
           yes | sdkmanager --licenses
-
-      - name: Install Android SDK packages
-        run: |
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-33" \
-            "build-tools;36.1.0"
+            "build-tools;33.0.2" \
+            "cmdline-tools;latest" \
+            "ndk;25.2.9519653"
 
       - name: Install buildozer + cython
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install "Cython==0.29.36" "buildozer==1.5.0"
+          python -m pip install "Cython<3" buildozer
 
-      - name: Ensure buildozer.spec has accept_sdk_license
-        run: |
-          if ! grep -q "^android.accept_sdk_license" buildozer.spec; then
-            echo "" >> buildozer.spec
-            echo "android.accept_sdk_license = True" >> buildozer.spec
-          fi
-          echo "---- buildozer.spec ----"
-          cat buildozer.spec
-
+      # Aseguramos que buildozer tome este SDK (no el que baja solo)
       - name: Build APK (debug)
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+          ANDROID_HOME: ${{ github.workspace }}/android-sdk
         run: |
           buildozer -v android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PLU_APP-APK
+          name: PLU_APP-debug-apk
           path: bin/*.apk
-
+          if-no-files-found: error
