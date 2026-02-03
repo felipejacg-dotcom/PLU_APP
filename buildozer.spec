@@ -9,7 +9,7 @@ source.include_exts = py,kv,png,jpg,jpeg,csv
 
 requirements = python3,kivy,openpyxl,et_xmlfile,plyer,pyjnius
 
-orientation = portrait
+orientation = all
 
 icon.filename = icon.png
 
