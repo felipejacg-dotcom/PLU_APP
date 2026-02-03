@@ -11,6 +11,9 @@ requirements = python3,kivy,openpyxl,et_xmlfile,plyer,pyjnius
 
 orientation = portrait
 
+icon.filename = icon.png
+
+
 # Android
 android.api = 33
 android.minapi = 24
