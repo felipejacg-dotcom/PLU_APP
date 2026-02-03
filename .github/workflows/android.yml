@@ -7,90 +7,75 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
-    env:
-      ANDROID_SDK_ROOT: /home/runner/android-sdk
-      ANDROID_HOME: /home/runner/android-sdk
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Set up Java 17
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
+      # Esto instala el SDK + sdkmanager correctamente
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git zip unzip \
-            build-essential ccache \
-            libffi-dev libssl-dev \
-            zlib1g-dev libbz2-dev liblzma-dev \
-            libsqlite3-dev libjpeg-dev libpng-dev \
-            curl
+            build-essential \
+            git \
+            zip \
+            unzip \
+            openjdk-17-jdk \
+            libffi-dev \
+            libssl-dev \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            zlib1g-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libtinfo5 \
+            cmake
 
-      # 1) Instala Android Commandline Tools (sdkmanager)
-      - name: Install Android cmdline-tools (sdkmanager)
-        run: |
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-          cd /tmp
-          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q cmdline-tools.zip
-          rm -f cmdline-tools.zip
-          mv cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
-
-      # 2) Verifica que sdkmanager exista
-      - name: Verify sdkmanager
-        run: |
-          which sdkmanager
-          sdkmanager --version
-
-      # 3) Acepta licencias e instala lo necesario
-      - name: Install Android SDK packages + accept licenses
-        run: |
-          yes | sdkmanager --licenses
-          sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-33" \
-            "build-tools;36.0.0"
-
-      # 4) Buildozer + Cython (Cython fijo para evitar errores)
-      - name: Install buildozer + cython
+      - name: Install Python deps (buildozer)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install "Cython==0.29.36" "buildozer==1.5.0"
+          python -m pip install "cython<3" buildozer
 
-      # 5) Asegura que tu buildozer.spec acepte licencias también
-      - name: Ensure buildozer.spec has accept_sdk_license
+      # Aceptar licencias e instalar paquetes básicos
+      - name: Install Android packages + accept licenses
         run: |
-          if ! grep -q "^android.accept_sdk_license" buildozer.spec; then
-            echo "" >> buildozer.spec
-            echo "android.accept_sdk_license = True" >> buildozer.spec
-          fi
-          echo "---- buildozer.spec ----"
-          cat buildozer.spec
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
-      # 6) Compilar APK
-      - name: Build APK (debug)
+      # Compilar y guardar log real
+      - name: Build APK (debug) and save logs
         run: |
-          buildozer -v android debug
+          set -o pipefail
+          buildozer -v android debug 2>&1 | tee build.log
 
-      # 7) Subir APK
-      - name: Upload APK artifact
+      - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: PLU_APP-APK
+          name: apk
           path: bin/*.apk
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: build.log
