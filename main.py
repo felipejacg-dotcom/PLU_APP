@@ -3,73 +3,52 @@ import csv
 from datetime import datetime
 
 from kivy.app import App
-from kivy.metrics import dp, sp
 from kivy.utils import platform
-
+from kivy.resources import resource_find
+from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
+from kivy.uix.recycleview import RecycleView
+from kivy.uix.recycleboxlayout import RecycleBoxLayout
+from kivy.uix.recycleview.views import RecycleDataViewBehavior
 
 from openpyxl import Workbook
 
-# Opcional: compartir archivo (Android)
-try:
-    from plyer import share
-except Exception:
-    share = None
-
 
 def show_popup(title: str, msg: str):
-    root = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(10))
-
-    lbl = Label(text=msg, halign="left", valign="top")
+    content = BoxLayout(orientation="vertical", padding=dp(12), spacing=dp(10))
+    lbl = Label(text=msg, halign="left", valign="middle")
     lbl.bind(size=lambda *_: setattr(lbl, "text_size", (lbl.width, None)))
-    root.add_widget(lbl)
-
     btn = Button(text="OK", size_hint=(1, None), height=dp(48))
-    root.add_widget(btn)
-
-    pop = Popup(title=title, content=root, size_hint=(0.92, 0.55), auto_dismiss=False)
+    content.add_widget(lbl)
+    content.add_widget(btn)
+    pop = Popup(title=title, content=content, size_hint=(0.92, 0.55), auto_dismiss=False)
     btn.bind(on_release=pop.dismiss)
     pop.open()
 
 
-class RowItem(BoxLayout):
-    """Fila con 2 columnas: codigo | nombre/marca"""
-    def __init__(self, codigo: str, nombre: str, **kwargs):
-        super().__init__(
-            orientation="horizontal",
-            size_hint_y=None,
-            height=dp(36),
-            padding=(dp(8), dp(4)),
-            spacing=dp(10),
-            **kwargs
-        )
+class RowItem(RecycleDataViewBehavior, Label):
+    pass
 
-        self.lbl_codigo = Label(
-            text=codigo,
-            size_hint_x=0.38,
-            halign="left",
-            valign="middle",
-            font_size=sp(14)
-        )
-        self.lbl_codigo.bind(size=self.lbl_codigo.setter("text_size"))
 
-        self.lbl_nombre = Label(
-            text=nombre,
-            size_hint_x=0.62,
-            halign="left",
-            valign="middle",
-            font_size=sp(14)
+class ResultsRV(RecycleView):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.viewclass = "RowItem"
+        layout = RecycleBoxLayout(
+            default_size=(None, dp(34)),
+            default_size_hint=(1, None),
+            size_hint=(1, None),
+            orientation="vertical",
+            spacing=dp(6),
+            padding=[dp(8), dp(8), dp(8), dp(8)],
         )
-        self.lbl_nombre.bind(size=self.lbl_nombre.setter("text_size"))
-
-        self.add_widget(self.lbl_codigo)
-        self.add_widget(self.lbl_nombre)
+        layout.bind(minimum_height=layout.setter("height"))
+        self.layout_manager = layout
+        self.add_widget(layout)
 
 
 class PLUAppUI(BoxLayout):
@@ -80,19 +59,19 @@ class PLUAppUI(BoxLayout):
         self.filtered = []
 
         # Título
-        title = Label(text="PLU APP", font_size=sp(20), size_hint=(1, None), height=dp(40))
+        title = Label(text="PLU APP", font_size=dp(22), size_hint=(1, None), height=dp(40))
         self.add_widget(title)
 
-        # Barra de búsqueda
-        bar = BoxLayout(orientation="horizontal", size_hint=(1, None), height=dp(46), spacing=dp(8))
+        # Barra búsqueda (más alta y cómoda)
+        bar = BoxLayout(orientation="horizontal", size_hint=(1, None), height=dp(52), spacing=dp(8))
         self.query = TextInput(
             hint_text="Buscar por código o nombre...",
             multiline=False,
-            font_size=sp(14),
-            padding=(dp(10), dp(10))
+            font_size=dp(18),
+            padding=[dp(10), dp(14), dp(10), dp(10)]
         )
-        btn_search = Button(text="Buscar", size_hint=(None, 1), width=dp(110), font_size=sp(14))
-        btn_clear = Button(text="Limpiar", size_hint=(None, 1), width=dp(110), font_size=sp(14))
+        btn_search = Button(text="Buscar", size_hint=(None, 1), width=dp(130), font_size=dp(16))
+        btn_clear = Button(text="Limpiar", size_hint=(None, 1), width=dp(130), font_size=dp(16))
 
         btn_search.bind(on_release=lambda *_: self.apply_filter())
         btn_clear.bind(on_release=lambda *_: self.clear_filter())
@@ -102,73 +81,71 @@ class PLUAppUI(BoxLayout):
         bar.add_widget(btn_clear)
         self.add_widget(bar)
 
-        # Acciones
-        actions = BoxLayout(orientation="horizontal", size_hint=(1, None), height=dp(46), spacing=dp(8))
-        btn_reload = Button(text="Recargar CSV", font_size=sp(14))
-        btn_export = Button(text="Exportar a Excel", font_size=sp(14))
-
+        # Botones acciones
+        actions = BoxLayout(orientation="horizontal", size_hint=(1, None), height=dp(52), spacing=dp(8))
+        btn_reload = Button(text="Recargar CSV", font_size=dp(16))
+        btn_export = Button(text="Exportar a Excel", font_size=dp(16))
         btn_reload.bind(on_release=lambda *_: self.load_csv())
         btn_export.bind(on_release=lambda *_: self.export_excel())
-
         actions.add_widget(btn_reload)
         actions.add_widget(btn_export)
         self.add_widget(actions)
 
         # Estado
-        self.status = Label(text="Cargando...", size_hint=(1, None), height=dp(26), font_size=sp(13))
+        self.status = Label(text="Cargando...", size_hint=(1, None), height=dp(28), font_size=dp(14))
         self.add_widget(self.status)
 
-        # Header de tabla
-        header = BoxLayout(orientation="horizontal", size_hint=(1, None), height=dp(30), padding=(dp(8), 0), spacing=dp(10))
-        h1 = Label(text="[b]CODIGO[/b]", markup=True, size_hint_x=0.38, halign="left", valign="middle", font_size=sp(13))
-        h2 = Label(text="[b]MARCA/NOMBRE[/b]", markup=True, size_hint_x=0.62, halign="left", valign="middle", font_size=sp(13))
-        h1.bind(size=h1.setter("text_size"))
-        h2.bind(size=h2.setter("text_size"))
-        header.add_widget(h1)
-        header.add_widget(h2)
-        self.add_widget(header)
+        # Resultados con RecycleView
+        self.rv = ResultsRV(size_hint=(1, 1))
+        self.add_widget(self.rv)
 
-        # Lista scroll
-        self.scroll = ScrollView(do_scroll_x=False)
-        self.list_layout = GridLayout(cols=1, spacing=dp(6), size_hint_y=None, padding=(0, dp(4), 0, dp(10)))
-        self.list_layout.bind(minimum_height=self.list_layout.setter("height"))
-        self.scroll.add_widget(self.list_layout)
-        self.add_widget(self.scroll)
-
+        # Cargar
+        self.load_csv()
         self.query.bind(on_text_validate=lambda *_: self.apply_filter())
 
-        self.load_csv()
+    def find_csv(self):
+        # Busca el CSV en los assets empaquetados por buildozer
+        # Asegúrate de que el archivo exista en el repo y se llame EXACTO:
+        # plu_catalogo.csv
+        p = resource_find("plu_catalogo.csv")
+        if p and os.path.exists(p):
+            return p
 
-    def csv_path(self):
-        return os.path.join(os.path.dirname(__file__), "plu_catalogo.csv")
+        # fallback: mismo directorio del main.py (útil en PC)
+        p2 = os.path.join(os.path.dirname(__file__), "plu_catalogo.csv")
+        if os.path.exists(p2):
+            return p2
+
+        return None
 
     def load_csv(self):
-        path = self.csv_path()
-
-        if not os.path.exists(path):
+        path = self.find_csv()
+        if not path:
             self.data = []
             self.filtered = []
-            self.render_results([])
-            self.status.text = "⚠️ No se encontró plu_catalogo.csv"
+            self.rv.data = [{"text": "(No se encontró plu_catalogo.csv)", "font_size": dp(16)}]
+            self.status.text = "⚠️ Falta plu_catalogo.csv"
             show_popup(
-                "Falta CSV",
-                "No se encontró 'plu_catalogo.csv' junto a main.py.\n\n"
+                "Falta archivo",
+                "No se encontró 'plu_catalogo.csv'.\n\n"
                 "Solución:\n"
-                "1) Sube plu_catalogo.csv al repo (misma carpeta de main.py)\n"
-                "2) Recompila el APK."
+                "1) Sube plu_catalogo.csv a la raíz del repo\n"
+                "2) Confirma que buildozer.spec tiene source.include_exts = py,csv,...\n"
+                "3) Recompila"
             )
             return
 
         try:
-            with open(path, "r", encoding="utf-8", newline="") as f:
-                rows = list(csv.reader(f))
-
             items = []
+            with open(path, "r", encoding="utf-8", newline="") as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+
             start_idx = 0
             if rows and len(rows[0]) >= 2:
                 h0 = (rows[0][0] or "").strip().lower()
                 h1 = (rows[0][1] or "").strip().lower()
-                if "codigo" in h0 and ("nombre" in h1 or "marca" in h1):
+                if "codigo" in h0 and "nombre" in h1:
                     start_idx = 1
 
             for r in rows[start_idx:]:
@@ -187,7 +164,7 @@ class PLUAppUI(BoxLayout):
         except Exception as e:
             self.data = []
             self.filtered = []
-            self.render_results([])
+            self.rv.data = [{"text": "(Error leyendo CSV)", "font_size": dp(16)}]
             self.status.text = "❌ Error cargando CSV"
             show_popup("Error CSV", f"Error leyendo CSV:\n{e}")
 
@@ -211,23 +188,32 @@ class PLUAppUI(BoxLayout):
         self.status.text = f"✅ Cargados: {len(self.data)} registros"
 
     def render_results(self, items):
-        self.list_layout.clear_widgets()
-
         if not items:
-            self.list_layout.add_widget(Label(text="(Sin resultados)", size_hint_y=None, height=dp(30), font_size=sp(14)))
+            self.rv.data = [{"text": "(Sin resultados)", "font_size": dp(16)}]
             return
 
-        max_show = 200
-        for it in items[:max_show]:
-            self.list_layout.add_widget(RowItem(it["codigo"], it["nombre"]))
+        # Mostramos máximo 300 para fluidez
+        max_show = 300
+        to_show = items[:max_show]
+
+        self.rv.data = [
+            {
+                "text": f"{it['codigo']}  -  {it['nombre']}",
+                "font_size": dp(16),
+                "size_hint_y": None,
+                "height": dp(34),
+                "halign": "left",
+                "valign": "middle",
+            }
+            for it in to_show
+        ]
 
         if len(items) > max_show:
-            self.list_layout.add_widget(Label(
-                text=f"... mostrando {max_show} de {len(items)} (refina la búsqueda)",
-                size_hint_y=None,
-                height=dp(30),
-                font_size=sp(13)
-            ))
+            self.rv.data.append({
+                "text": f"... mostrando {max_show} de {len(items)} (refina la búsqueda)",
+                "font_size": dp(14),
+                "height": dp(34),
+            })
 
     def export_excel(self):
         if not self.filtered:
@@ -236,7 +222,7 @@ class PLUAppUI(BoxLayout):
 
         try:
             app = App.get_running_app()
-            out_dir = app.user_data_dir
+            out_dir = app.user_data_dir  # seguro en Android
             os.makedirs(out_dir, exist_ok=True)
 
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -246,27 +232,12 @@ class PLUAppUI(BoxLayout):
             ws = wb.active
             ws.title = "PLU"
             ws.append(["codigo", "nombre"])
-
             for it in self.filtered:
                 ws.append([it["codigo"], it["nombre"]])
-
             wb.save(out_path)
 
-            # Compartir en Android
-            if platform == "android" and share is not None:
-                try:
-                    share.share(
-                        title="Export PLU",
-                        text="Archivo Excel generado por PLU APP",
-                        filepath=out_path
-                    )
-                    self.status.text = "✅ Excel creado y listo para compartir"
-                    return
-                except Exception:
-                    pass
-
-            show_popup("Listo", f"Excel creado en:\n{out_path}\n\n(Es carpeta interna de la app)")
             self.status.text = "✅ Excel creado"
+            show_popup("Listo", f"Excel creado en:\n{out_path}\n\n(Es carpeta interna de la app)")
 
         except Exception as e:
             show_popup("Error exportando", f"No se pudo crear el Excel:\n{e}")
@@ -279,8 +250,6 @@ class PLUApp(App):
 
 if __name__ == "__main__":
     PLUApp().run()
-
-
 
 
 
