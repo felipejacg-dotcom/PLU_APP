@@ -6,65 +6,38 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Install system deps
         run: |
-          sudo apt update
-          sudo apt install -y python3 python3-pip python3-venv git zip unzip \
-            build-essential openjdk-17-jdk libffi-dev libssl-dev
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3 python3-pip python3-setuptools python3-wheel python3-venv \
+            git zip unzip \
+            openjdk-17-jdk \
+            build-essential \
+            libffi-dev libssl-dev \
+            zlib1g-dev libjpeg-dev
 
       - name: Install buildozer
         run: |
-          python3 -m pip install --upgrade pip setuptools wheel
-          python3 -m pip install "cython<3" buildozer
+          python3 -m pip install --upgrade pip
+          python3 -m pip install buildozer cython
 
       - name: Ensure buildozer.spec exists
         run: |
-          if [ ! -f buildozer.spec ]; then
-            buildozer init
-          fi
+          test -f buildozer.spec || (echo "Falta buildozer.spec en la raíz del repo" && exit 1)
 
-      - name: Patch buildozer.spec
+      - name: Build APK (debug)
         run: |
-          python3 - <<'PY'
-          import re, pathlib
-          p = pathlib.Path("buildozer.spec")
-          s = p.read_text(encoding="utf-8")
-
-          def set_k(key, val):
-            nonlocal s
-            if re.search(rf"(?m)^\s*{re.escape(key)}\s*=", s):
-              s = re.sub(rf"(?m)^\s*{re.escape(key)}\s*=.*$", f"{key} = {val}", s)
-            else:
-              s += f"\n{key} = {val}\n"
-
-          # Archivos que van dentro del APK
-          set_k("source.include_exts", "py,kv,csv,png,jpg,jpeg,json")
-
-          # Librerías (openpyxl necesita et_xmlfile)
-          set_k("requirements", "python3,kivy,pillow,openpyxl,et_xmlfile")
-
-          # Android
-          set_k("android.api", "33")
-          set_k("android.minapi", "24")
-          set_k("android.archs", "arm64-v8a")
-
-          # Tu archivo principal (por si buildozer no lo detecta)
-          set_k("entrypoint", "main.py")
-
-          p.write_text(s, encoding="utf-8")
-          print("buildozer.spec updated")
-          PY
-
-      - name: Build APK
-        run: |
-          buildozer -v android clean
           buildozer -v android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: apk
-          path: bin/*.apk
+          name: PLU_APP_APK
+          path: |
+            bin/*.apk
