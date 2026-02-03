@@ -26,18 +26,18 @@ jobs:
             zlib1g-dev libncurses5-dev libncursesw5-dev \
             libffi-dev libssl-dev libsqlite3-dev \
             libjpeg-dev libpng-dev \
-            cmake ccache
+            cmake ccache curl
 
       - name: Install buildozer + cython
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install "cython<3" buildozer
 
-      - name: Ensure buildozer.spec exists
+      - name: Ensure/patch buildozer.spec (accept licenses)
         run: |
           python - <<'PY'
           from pathlib import Path
-          import textwrap
+          import re, textwrap
 
           p = Path("buildozer.spec")
           if not p.exists():
@@ -57,17 +57,50 @@ jobs:
               android.minapi = 24
               android.archs = arm64-v8a
               orientation = portrait
-
-              # Acepta licencias automáticamente (evita el "Accept? (y/N)")
-              android.accept_sdk_license = True
               """)
               p.write_text(content, encoding="utf-8")
-              print("Created buildozer.spec")
+
+          txt = p.read_text(encoding="utf-8")
+
+          if re.search(r'^\s*android\.accept_sdk_license\s*=', txt, flags=re.M):
+              txt = re.sub(r'^\s*android\.accept_sdk_license\s*=.*$',
+                           'android.accept_sdk_license = True',
+                           txt, flags=re.M)
           else:
-              print("buildozer.spec already exists (no changes).")
+              txt = txt.rstrip() + "\n\nandroid.accept_sdk_license = True\n"
+
+          p.write_text(txt, encoding="utf-8")
+          print("OK: android.accept_sdk_license = True")
           PY
 
+      - name: Install Android cmdline-tools + accept licenses + install build-tools
+        env:
+          ANDROID_SDK_ROOT: /home/runner/android-sdk
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          cd /home/runner
+
+          # Descarga cmdline-tools (Google)
+          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+
+          # Exporta PATH
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+
+          # Acepta licencias
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses
+
+          # Instala lo necesario (incluye AIDL dentro de build-tools)
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;36.1.0"
+
       - name: Build APK (debug)
+        env:
+          ANDROID_SDK_ROOT: /home/runner/android-sdk
         run: |
           buildozer -v android debug
 
