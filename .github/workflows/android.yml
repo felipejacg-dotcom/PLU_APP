@@ -11,7 +11,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
@@ -19,84 +19,61 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            zip unzip git \
-            build-essential \
-            python3-dev \
-            openjdk-17-jdk \
+          sudo apt-get install -y --no-install-recommends \
+            build-essential git zip unzip openjdk-17-jdk \
+            python3-dev python3-pip \
             autoconf automake libtool pkg-config \
-            libffi-dev libssl-dev \
-            zlib1g-dev \
-            liblzma-dev \
-            libjpeg-dev \
-            libncurses5-dev libncursesw5-dev \
-            libsqlite3-dev \
-            libreadline-dev \
-            libgdbm-dev \
-            libgdbm-compat-dev \
-            libexpat1-dev \
-            libgl1-mesa-dev \
-            libgles2-mesa-dev \
-            libegl1-mesa-dev \
-            libx11-dev libxext-dev libxrender-dev \
-            libxrandr-dev libxi-dev \
-            libsndfile1 \
-            libpulse-dev \
-            libasound2-dev
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libffi-dev libssl-dev libsqlite3-dev \
+            libjpeg-dev libpng-dev \
+            cmake ccache
 
       - name: Install buildozer + cython
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install "cython<3" buildozer
 
-      # Si NO existe buildozer.spec, lo crea.
       - name: Ensure buildozer.spec exists
         run: |
-          if [ ! -f buildozer.spec ]; then
-            cat > buildozer.spec << 'EOF'
-[app]
-title = PLU App
-package.name = pluapp
-package.domain = org.tuniche
-version = 0.1
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
 
-source.dir = .
-source.include_exts = py,kv,png,jpg,jpeg,csv
+          p = Path("buildozer.spec")
+          if not p.exists():
+              content = textwrap.dedent("""\
+              [app]
+              title = PLU App
+              package.name = pluapp
+              package.domain = org.tuniche
+              version = 0.1
 
-requirements = python3,kivy,pillow,openpyxl
+              source.dir = .
+              source.include_exts = py,kv,png,jpg,jpeg,csv
 
-android.api = 33
-android.minapi = 24
-android.archs = arm64-v8a
-orientation = portrait
-EOF
-          fi
+              requirements = python3,kivy,pillow,openpyxl
 
-      # ✅ PARCHE: agrega android.accept_sdk_license = True si no existe
-      - name: Patch buildozer.spec (auto accept SDK license)
-        run: |
-          if ! grep -qE '^\s*android\.accept_sdk_license\s*=' buildozer.spec; then
-            echo "" >> buildozer.spec
-            echo "android.accept_sdk_license = True" >> buildozer.spec
-          fi
-          echo "----- buildozer.spec -----"
-          cat buildozer.spec
+              android.api = 33
+              android.minapi = 24
+              android.archs = arm64-v8a
+              orientation = portrait
 
-      # Cache para acelerar builds (opcional)
-      - name: Cache buildozer + gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.buildozer
-            ~/.gradle
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+              # Acepta licencias automáticamente (evita el "Accept? (y/N)")
+              android.accept_sdk_license = True
+              """)
+              p.write_text(content, encoding="utf-8")
+              print("Created buildozer.spec")
+          else:
+              print("buildozer.spec already exists (no changes).")
+          PY
 
       - name: Build APK (debug)
         run: |
           buildozer -v android debug
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PLU_APP_APK
+          name: PLU_APP-APK
           path: bin/*.apk
+
