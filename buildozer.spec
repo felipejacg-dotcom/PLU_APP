@@ -7,11 +7,13 @@ version = 0.1
 # Tu proyecto está en la raíz del repo
 source.dir = .
 # Incluye CSV y recursos
-source.include_exts = py,kv,png,jpg,jpeg,csv,ttf
+source.include_exts = py,kv,png,jpg,jpeg,csv
+
 
 # Requisitos
 # - et_xmlfile es dependencia de openpyxl
-requirements = python3,kivy,pillow,openpyxl,et_xmlfile
+requirements = python3,kivy,openpyxl,et_xmlfile,plyer
+
 
 # Pantalla vertical
 orientation = portrait
